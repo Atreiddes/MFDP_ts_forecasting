@@ -7,7 +7,7 @@ import json
 
 import pandas as pd
 
-from forecast_service import crud, worker
+from forecast_service import crud, mq, worker
 from forecast_service.db import engine
 from forecast_service.forecast import forecast_series
 
@@ -92,3 +92,16 @@ def test_worker_handle_failure_marks_partial(client, published, monkeypatch):
         except RuntimeError:
             pass
     assert client.get(f"/api/runs/{rid}").json()["status"] == "partial"
+
+
+def test_publish_failure_marks_run_failed(client, monkeypatch):
+    """Брокер недоступен: POST отдаёт 503, а прогон помечается failed, не виснет в queued."""
+    def boom(msgs):
+        raise RuntimeError("broker down")
+
+    monkeypatch.setattr(mq, "publish", boom)
+    r = client.post("/api/runs", json={"store_id": "CA_2", "cat_id": "FOODS"})
+    assert r.status_code == 503
+    runs = client.get("/api/runs").json()
+    ca2 = [x for x in runs if x["store_id"] == "CA_2"]
+    assert ca2 and ca2[0]["status"] == "failed"

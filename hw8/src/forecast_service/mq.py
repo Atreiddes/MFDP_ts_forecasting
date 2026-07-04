@@ -15,9 +15,9 @@ from .config import settings
 QUEUE = "forecast_chunks"
 
 
-def connect():
+def connect(attempts=15):
     params = pika.URLParameters(settings.rabbitmq_url)
-    for _ in range(15):
+    for _ in range(attempts):
         try:
             return pika.BlockingConnection(params)
         except pika.exceptions.AMQPConnectionError:
@@ -26,7 +26,7 @@ def connect():
 
 
 def publish(messages):
-    conn = connect()
+    conn = connect(attempts=3)  # в пути HTTP-запроса не висим долго: быстрый отказ -> 503
     try:
         ch = conn.channel()
         ch.queue_declare(queue=QUEUE, durable=True)

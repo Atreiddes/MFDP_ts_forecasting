@@ -77,15 +77,18 @@ def start_chunk(chunk_id, worker_id):
 
 
 def complete_chunk(run_id, chunk_id, df, worker_id):
-    """Пачечный upsert точек и перевод пачки в COMPLETED в одной транзакции, потом коммит."""
+    """Перевод пачки в COMPLETED и пачечный upsert точек одной транзакцией. Точки пишутся только
+    если пачка была в работе (processing): пачку, помеченную failed (например при сбое публикации),
+    повторно доставленное сообщение не воскрешает."""
     recs = [(int(run_id), r.series_id, r.week_start_date.date(), int(r.h),
              float(r.p10), float(r.p50), float(r.p90)) for r in df.itertuples(index=False)]
     raw = engine.raw_connection()
     try:
         with raw.cursor() as cur:
-            cur.executemany(UPSERT, recs)
             cur.execute("UPDATE forecast_chunk SET status='completed', worker_id=%s, finished_at=now() "
-                        "WHERE id=%s AND status <> 'completed'", (worker_id, chunk_id))
+                        "WHERE id=%s AND status='processing'", (worker_id, chunk_id))
+            if cur.rowcount:
+                cur.executemany(UPSERT, recs)
         raw.commit()
     finally:
         raw.close()

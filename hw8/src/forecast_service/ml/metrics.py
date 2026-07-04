@@ -8,7 +8,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-TCOL = "week_start_date"
+from .features import TCOL
 
 # 12 уровней агрегации M5: ключи группировки рядов.
 LEVELS = [

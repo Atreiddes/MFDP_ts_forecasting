@@ -63,4 +63,4 @@ DB_URL=postgresql+psycopg://postgres:postgres@localhost:5432/forecast uv run pyt
 
 FOODS-срез панели M5, календарь и обученный артефакт модели уже лежат в репозитории (`data/`, `artifacts/`). Все необходимые зависимости в Docker image.
 
-При необходимости артефакт пересобирается офлайн скриптами `scripts/prepare_data.py`, `scripts/train_artifact.py`, `scripts/foods_metrics.py`. Они переиспользуют обучающий пайплайн из hw7, поэтому запускаются в его окружении, для работы сервиса это не требуется.
+При необходимости артефакт пересобирается офлайн скриптами `scripts/prepare_data.py`, `scripts/train_artifact.py`, `scripts/foods_metrics.py`. Они переиспользуют обучающий пайплайн из hw5 (`hw5/scripts`), поэтому запускаются в его окружении, для работы сервиса это не требуется.
