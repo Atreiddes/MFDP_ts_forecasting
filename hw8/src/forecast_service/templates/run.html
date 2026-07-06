@@ -21,7 +21,11 @@
   <h2>График прогноза</h2>
   <p class="muted">Показан самый крупный ряд. Кликните любой ряд в таблице ниже, чтобы построить его прогноз.</p>
   <div id="chart" class="chart"></div>
-  <p class="muted" style="font-size:13px">Линия - прогноз P50 (наиболее вероятный спрос). Затенённая лента - интервал P10-P90: спрос попадёт в него примерно в 80% случаев. Узкая лента - спрос предсказуем, широкая - стоит присмотреться.</p>
+  <ul class="legend-list muted" style="font-size:13px">
+    <li><b>Линия P50</b> - наиболее вероятный спрос.</li>
+    <li><b>Затенённая лента P10-P90</b> - спрос попадёт в неё примерно в 80% случаев.</li>
+    <li><b>Узкая лента</b> - спрос предсказуем; <b>широкая</b> - стоит присмотреться.</li>
+  </ul>
   <details style="margin-top:6px">
     <summary style="cursor:pointer;font-size:14px">Зачем нужен интервал? (пояснение)</summary>
     <div class="muted" style="font-size:13px;margin-top:8px;line-height:1.55">
@@ -38,11 +42,12 @@
   <h2>Сводка по агрегатам</h2>
   <p class="muted" style="font-size:13px">Суммарный прогноз P50 за горизонт по уровням: всего, по регионам, магазинам и отделам. Модель прогнозирует на уровне товар-магазин, уровни выше - суммы этих прогнозов снизу вверх. На агрегатах модель точнее всего (см. WRMSSE ниже). Ширина интервала агрегата - сумма интервалов рядов: это верхняя, осторожная оценка неопределённости (реальный разброс суммы уже).</p>
   <table class="grid" id="summary">
-    <thead><tr><th>Уровень</th><th>Группа</th><th>Сумма P50</th><th>Ширина P10-P90</th></tr></thead>
+    <thead><tr><th>Уровень</th><th>Группа</th><th>Спрос за 8 недель (P50)</th><th>Разброс P10-P90</th></tr></thead>
     <tbody></tbody>
   </table>
 
   <h2>Ряды (детально по товар-магазин)</h2>
+  <p class="muted" style="font-size:13px">Прогноз по каждому ряду товар-магазин на 8 недель. <b>Спрос за 8 недель</b> - сумма медианного прогноза P50 по всем 8 неделям (сколько всего продастся). <b>Разброс P10-P90</b> - сумма ширины коридора неопределённости по 8 неделям; цвет считается относительно объёма ряда (разброс к продажам), не по абсолютному числу.</p>
   <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
     <select id="f-state" class="filter-input" style="width:auto"><option value="">Все регионы</option></select>
     <select id="f-store" class="filter-input" style="width:auto"><option value="">Все магазины</option></select>
@@ -55,20 +60,21 @@
         <tr>
           <th data-key="series_id" data-type="str">Ряд</th>
           <th data-key="item_id" data-type="str">Товар</th>
-          <th data-key="sum_p50" data-type="num">Сумма P50 за горизонт</th>
-          <th data-key="interval_width" data-type="num">Ширина P10-P90 за горизонт</th>
+          <th data-key="sum_p50" data-type="num">Спрос за 8 недель (сумма P50)</th>
+          <th data-key="interval_width" data-type="num">Разброс P10-P90 (за 8 недель)</th>
         </tr>
       </thead>
       <tbody></tbody>
     </table>
   </div>
 
-  <div class="muted" style="font-size:13px;margin-top:8px;line-height:2">
-    Цвет в столбце «Ширина P10-P90» - относительная ширина интервала (к объёму прогноза), в сравнении с типичной по прогону:
-    <span class="narrow" style="padding:1px 12px;border-radius:3px"></span> уже среднего, спрос предсказуем;
-    <span class="mid" style="padding:1px 12px;border-radius:3px"></span> около среднего;
-    <span class="wide" style="padding:1px 12px;border-radius:3px"></span> заметно шире среднего, волатильно, проверить руками.
-    Порог: зелёный - до 0.7 медианы, жёлтый - до 1.3 медианы, красный - выше.
+  <div class="muted" style="font-size:13px;margin-top:8px">
+    Цвет в столбце «Ширина P10-P90» - относительная ширина интервала (к объёму прогноза) в сравнении с типичной по прогону:
+    <ul class="legend-list" style="margin-top:8px">
+      <li><span class="sw narrow"></span> <b>зелёный</b> - уже среднего (до 0.7 медианы): спрос предсказуем</li>
+      <li><span class="sw mid"></span> <b>жёлтый</b> - около среднего (0.7-1.3 медианы)</li>
+      <li><span class="sw wide"></span> <b>светло-красный</b> - заметно шире среднего (выше 1.3 медианы): волатильно, проверить руками</li>
+    </ul>
   </div>
 
   <h2>Качество модели</h2>
@@ -117,6 +123,7 @@
 <script>
 const RUN_ID = {{ run_id | tojson }};
 let pollTimer = null;
+let terminal = false;   // защита от двойного loadResult, если два poll пересеклись на completed
 let catalogRows = [];
 let sortState = { key: null, dir: 1 };
 
@@ -148,10 +155,13 @@ async function poll() {
     }
 
     if (r.status === "completed" || r.status === "partial") {
+      if (terminal) return;              // второй параллельный poll не должен грузить результат повторно
+      terminal = true;
       clearInterval(pollTimer);
       document.getElementById("progress-bar").style.width = "100%";
       await loadResult();
     } else if (r.status === "failed") {
+      terminal = true;
       clearInterval(pollTimer);
     }
   } catch (ex) {
@@ -230,9 +240,9 @@ async function loadCatalog() {
 }
 
 // иерархию (регион/магазин/отдел) отдаёт сервер полями каталога, строку id не разбираем
-function aggBy(keyFn) {
+function aggByFrom(rows, keyFn) {
   const m = new Map();
-  for (const r of catalogRows) {
+  for (const r of rows) {
     const k = keyFn(r);
     const o = m.get(k) || { p50: 0, w: 0 };
     o.p50 += r.sum_p50 || 0;
@@ -241,15 +251,35 @@ function aggBy(keyFn) {
   }
   return [...m].sort((a, b) => b[1].p50 - a[1].p50);
 }
+function sumOf(rows) {
+  return rows.reduce((a, r) => ({ p50: a.p50 + (r.sum_p50 || 0), w: a.w + (r.interval_width || 0) }), { p50: 0, w: 0 });
+}
+// текущий путь воронки = значения фильтров (регион -> магазин -> отдел)
+function currentDrill() {
+  const store = document.getElementById("f-store").value || null;
+  let state = document.getElementById("f-state").value || null;
+  if (store && !state) {                       // магазин принадлежит одному штату - подставляем его
+    const r = catalogRows.find(x => x.store_id === store);
+    if (r) state = r.state_id;
+  }
+  return { state, store, dept: document.getElementById("f-dept").value || null };
+}
 
-// сводка: суммарный прогноз по уровням иерархии (всего / регион / магазин / отдел)
+// сводка = вложенная воронка: Всего -> штаты -> (внутри штата) магазины -> (внутри магазина)
+// отделы -> товары в таблице ниже. Хлебные крошки текущего пути - клик поднимает на уровень.
 function buildSummary() {
   const tbody = document.querySelector("#summary tbody");
   tbody.innerHTML = "";
-  const addRow = (level, group, o, onClick) => {
+  const d = currentDrill();
+  const filt = catalogRows.filter(r =>
+    (!d.state || r.state_id === d.state) &&
+    (!d.store || r.store_id === d.store) &&
+    (!d.dept || r.dept_id === d.dept));
+
+  const addRow = (level, group, o, onClick, cls) => {
     const tr = document.createElement("tr");
-    tr.className = "series-row";
-    tr.addEventListener("click", onClick);
+    if (onClick) { tr.className = "series-row"; tr.addEventListener("click", onClick); }
+    if (cls) tr.classList.add(cls);
     for (const v of [level, group, fmt(o.p50), fmt(o.w)]) {
       const td = document.createElement("td");
       td.textContent = v;
@@ -257,19 +287,30 @@ function buildSummary() {
     }
     tbody.appendChild(tr);
   };
-  const tot = catalogRows.reduce((a, r) => ({ p50: a.p50 + (r.sum_p50 || 0), w: a.w + (r.interval_width || 0) }), { p50: 0, w: 0 });
-  addRow("Всего", "все ряды", tot, () => { setFilter({}); loadAgg("Всего", {}); });
-  const stateOf = {};
-  for (const r of catalogRows) stateOf[r.store_id] = r.state_id;
-  const byState = aggBy(r => r.state_id);
-  const byStore = aggBy(r => r.store_id);
-  const byDept = aggBy(r => r.dept_id);
-  if (byState.length > 1) for (const [k, o] of byState)
-    addRow("Регион", k, o, () => { setFilter({ state: k }); loadAgg("Регион " + k, { state: k }); });
-  if (byStore.length > 1) for (const [k, o] of byStore)
-    addRow("Магазин", k, o, () => { setFilter({ state: stateOf[k], store: k }); loadAgg("Магазин " + k, { store: k }); });
-  for (const [k, o] of byDept)
-    addRow("Отдел", k, o, () => { setFilter({ dept: k }); loadAgg("Отдел " + k, { dept: k }); });
+
+  // корень воронки - всегда доступен (сброс пути)
+  addRow("Всего", "все ряды", sumOf(catalogRows), () => { setFilter({}); loadAgg("Всего", {}); });
+  // хлебные крошки пройденного пути
+  if (d.state) addRow("Штат", d.state, sumOf(catalogRows.filter(r => r.state_id === d.state)),
+    () => { setFilter({ state: d.state }); loadAgg("Штат " + d.state, { state: d.state }); }, "crumb");
+  if (d.store) addRow("Штат-магазин", [d.state, d.store].filter(Boolean).join(" / "), sumOf(catalogRows.filter(r => r.store_id === d.store)),
+    () => { setFilter({ state: d.state, store: d.store, dept: d.dept }); loadAgg("Магазин " + d.store, { store: d.store, dept: d.dept }); }, "crumb");
+  if (d.dept) addRow("Отдел", [d.state, d.store, d.dept].filter(Boolean).join(" / "), sumOf(filt),
+    () => { setFilter({ state: d.state, store: d.store, dept: d.dept }); loadAgg("Отдел " + d.dept, { state: d.state, store: d.store, dept: d.dept }); }, "crumb");
+
+  // следующий уровень воронки - разбивка текущего среза (выбранный отдел сохраняем при подъёме)
+  let label, keyFn, apply;
+  if (!d.state) { label = "→ Штат"; keyFn = r => r.state_id; apply = k => ({ state: k, dept: d.dept }); }
+  else if (!d.store) { label = "→ Магазин"; keyFn = r => r.store_id; apply = k => ({ state: d.state, store: k, dept: d.dept }); }
+  else if (!d.dept) { label = "→ Отдел"; keyFn = r => r.dept_id; apply = k => ({ state: d.state, store: d.store, dept: k }); }
+  if (label) {
+    for (const [k, o] of aggByFrom(filt, keyFn)) {
+      const title = label.replace("→ ", "") + " " + k;
+      addRow(label, k, o, () => { const f = apply(k); setFilter(f); loadAgg(title, f); });
+    }
+  } else {
+    addRow("Товары", "выберите ряд в таблице ниже ↓", sumOf(filt), null);
+  }
 }
 
 // заполнить выпадающие списки фильтров различимыми значениями из каталога
@@ -377,13 +418,19 @@ document.getElementById("catalog-filter").addEventListener("input", () => {
   clearTimeout(filterTimer);
   filterTimer = setTimeout(renderCatalog, 150);
 });
-document.getElementById("f-state").addEventListener("change", () => { refreshStores(); renderCatalog(); });
-document.getElementById("f-store").addEventListener("change", renderCatalog);
-document.getElementById("f-dept").addEventListener("change", renderCatalog);
+document.getElementById("f-state").addEventListener("change", () => { refreshStores(); renderCatalog(); buildSummary(); });
+document.getElementById("f-store").addEventListener("change", () => { renderCatalog(); buildSummary(); });
+document.getElementById("f-dept").addEventListener("change", () => { renderCatalog(); buildSummary(); });
 
 // единая функция отрисовки графика: история (контекст), лента P10-P90, P50, факт на
 // прогнозном окне (валидация), вертикальные пунктиры начала прогноза и конца теста
 function drawChart(title, histRows, pointRows) {
+  const chartEl = document.getElementById("chart");
+  if (typeof Plotly === "undefined") {
+    chartEl.textContent = "График недоступен: библиотека Plotly не загрузилась (/static/plotly.min.js).";
+    return;
+  }
+  try {
   const fStart = pointRows.length ? pointRows[0].week : null;
   const fEnd = pointRows.length ? pointRows[pointRows.length - 1].week : null;
 
@@ -428,6 +475,9 @@ function drawChart(title, histRows, pointRows) {
     shapes: shapes,
     annotations: anns
   }, { responsive: true });
+  } catch (e) {
+    document.getElementById("chart").textContent = "Ошибка построения графика: " + (e && e.message ? e.message : e);
+  }
 }
 
 async function loadForecast(seriesId) {
@@ -453,6 +503,7 @@ function setFilter(f) {
   document.getElementById("f-store").value = f.store || "";
   document.getElementById("f-dept").value = f.dept || "";
   renderCatalog();
+  buildSummary();
 }
 
 async function loadMetrics() {

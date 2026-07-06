@@ -130,6 +130,15 @@ table.grid th {
 .mid { background: #fdf3c7; }
 .wide { background: #f8d2d2; }
 
+/* легенды пунктами и цветные свотчи */
+.legend-list { margin: 6px 0 6px 20px; padding: 0; }
+.legend-list li { margin: 3px 0; line-height: 1.5; }
+.sw { display: inline-block; width: 13px; height: 13px; border-radius: 3px;
+  vertical-align: middle; margin-right: 6px; border: 1px solid rgba(0,0,0,.14); }
+/* хлебные крошки воронки в сводке */
+.crumb td { background: #f3f6fb; font-style: italic; }
+.crumb td:first-child::before { content: "↑ "; color: #8a90a0; }
+
 .progress {
   height: 18px;
   background: #e2e5e9;

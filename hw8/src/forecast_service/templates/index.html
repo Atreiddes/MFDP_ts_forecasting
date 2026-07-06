@@ -35,7 +35,7 @@
   <div class="field">
     <label for="api_key">Ключ API</label>
     <input type="password" id="api_key" autocomplete="off" placeholder="ключ на запуск прогона">
-    <div class="muted">Запуск прогона требует ключ (защита от постороннего запуска). Ключ запоминается в браузере.</div>
+    <div class="muted">Защита запуска прогона ключом. В целях демонстрации ключ подставлен заранее и вводить его не нужно; в рабочей системе ключ выдаётся каждому пользователю отдельно.</div>
   </div>
 
   <button type="submit">Запустить прогон</button>
@@ -83,7 +83,11 @@ async function initOrigin() {
     const h = await (await fetch("/health")).json();
     latestOrigin = h.origin || null;
     hmax = h.hmax || 8;
-    if (latestOrigin) document.getElementById("origin").value = latestOrigin;
+    if (latestOrigin) {
+      const el = document.getElementById("origin");
+      el.value = latestOrigin;
+      el.max = latestOrigin;   // нельзя выбрать неделю позже последней недели данных - иначе истории нет
+    }
   } catch (e) { /* сеть недоступна - поле пустое, сервер возьмёт последнюю неделю сам */ }
 }
 document.getElementById("origin-latest").addEventListener("click", () => {
@@ -95,9 +99,10 @@ document.getElementById("origin-test").addEventListener("click", () => {
 });
 initOrigin();
 
-// ключ API живёт в браузере, чтобы не вводить на каждый запуск
+// ключ API живёт в браузере; для демонстрации подставляется демо-ключ,
+// сам механизм проверки на сервере при этом работает (без ключа будет 401)
 const keyInput = document.getElementById("api_key");
-keyInput.value = localStorage.getItem("api_key") || "";
+keyInput.value = localStorage.getItem("api_key") || "demo-key";
 keyInput.addEventListener("input", () => localStorage.setItem("api_key", keyInput.value));
 
 // список прогонов: показываем последние 5, остальные по кнопке
