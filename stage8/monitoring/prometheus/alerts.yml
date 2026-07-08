@@ -1,0 +1,56 @@
+groups:
+  - name: forecast-degradation
+    rules:
+      - alert: ModelDegraded
+        expr: forecast_degraded{job="forecast-api"} == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Модель деградировала по гейту качества"
+          description: "Сработал гейт деградации (точность, смещение, интервалы или дрейф). Повод для разбора и переобучения."
+
+      - alert: IntervalCoverageLow
+        expr: forecast_interval_coverage{job="forecast-api"} < 0.65
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Интервалы прогноза слишком узкие"
+          description: "Доля факта в интервале P10-P90 ниже 0.65 при номинальных 0.8 - интервалы недооценивают неопределённость."
+
+      - alert: FeatureDrift
+        expr: max(forecast_data_drift_psi{job="forecast-api"}) > 0.25
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Заметный дрейф входных признаков"
+          description: "PSI признака выше 0.25 - распределение входа заметно ушло от эталона год назад."
+
+      - alert: ModelBeatenByBaseline
+        expr: forecast_fva_ma4_pct{job="forecast-api"} <= 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Модель перестала бить базу MA-4"
+          description: "Прирост точности над скользящим средним MA-4 не выше нуля - относительная деградация."
+
+      - alert: PlanningBiasHigh
+        expr: forecast_planning_bias{job="forecast-api"} > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Смещение на плановом уровне велико"
+          description: "Модуль смещения на уровне штата выше 0.1 - систематический сдвиг заказа на плановом уровне."
+
+      - alert: WorkerChunkFailures
+        expr: sum(rate(forecast_chunks_processed_total{job="forecast-worker",result="failed"}[10m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Воркеры проваливают пачки"
+          description: "Есть провалы обработки пачек за последние 10 минут."
