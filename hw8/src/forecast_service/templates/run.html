@@ -78,7 +78,7 @@
   </div>
 
   <h2>Качество модели</h2>
-  <p class="muted">Бэктест walk-forward по нескольким окнам, WRMSSE по уровням иерархии M5. Оценка модели, общая для всех прогонов, а не точность этого прогона. WRMSSE меньше 1 - лучше наивного прогноза (повтор прошлой недели), больше 1 - хуже. Зелёный хорошо, красный - на уровне наива или хуже.</p>
+  <p class="muted">Бэктест walk-forward по нескольким окнам, WRMSSE по уровням иерархии M5. Оценка модели, общая для всех прогонов, а не точность этого прогона. WRMSSE меньше 1 - лучше бейзлайна (повтор прошлой недели), больше 1 - хуже. Зелёный хорошо, красный - на уровне бейзлайна или хуже.</p>
   <div id="model-version" class="muted"></div>
   <div id="wrmsse"></div>
   <div id="wrmsse-note" class="muted" style="font-size:13px;margin-top:4px"></div>
@@ -90,24 +90,17 @@
   </table>
 
   <details style="margin-top:14px">
-    <summary style="cursor:pointer;font-size:14px">Что означают уровни L1-L12? (пояснение)</summary>
+    <summary style="cursor:pointer;font-size:14px">Что означают уровни? (пояснение)</summary>
     <div class="muted" style="font-size:13px;margin-top:8px;line-height:1.55">
-      <p>Прогноз проверяется на разных уровнях агрегации: сверху общие итоги (их прогнозировать легче), внизу отдельный товар в конкретном магазине (сложнее всего).</p>
+      <p>Прогноз проверяется на вложенных уровнях агрегации: сверху общий итог (его прогнозировать легче), внизу отдельный товар в конкретном магазине (сложнее всего).</p>
       <ul style="margin:6px 0 6px 18px;padding:0">
-        <li>L1 - всего продаж по всем магазинам и товарам</li>
-        <li>L2 - по штату (региону)</li>
-        <li>L3 - по магазину</li>
-        <li>L4 - по категории (у нас одна FOODS, поэтому совпадает с L1)</li>
-        <li>L5 - по отделу внутри категории</li>
-        <li>L6 - штат по категории (на срезе FOODS совпадает с L2)</li>
-        <li>L7 - штат по отделу</li>
-        <li>L8 - магазин по категории (совпадает с L3)</li>
-        <li>L9 - магазин по отделу</li>
-        <li>L10 - по товару (сумма по всем магазинам)</li>
-        <li>L11 - товар по штату</li>
-        <li>L12 - конкретный товар в конкретном магазине (самый нижний уровень)</li>
+        <li>Всего - все продажи по всем магазинам и товарам</li>
+        <li>Штат - продажи по штату (региону)</li>
+        <li>Штат-магазин - продажи по магазину</li>
+        <li>Штат-магазин-отдел - продажи по отделу в магазине</li>
+        <li>Штат-магазин-отдел-товар - конкретный товар в конкретном магазине (нижний уровень)</li>
       </ul>
-      <p>Верхние уровни у нас 0.2-0.7 - заметно лучше наива. Нижний L12 около 1: спрос по одному товару в магазине прерывистый, точнее наива предсказать почти нельзя. Поэтому ценность в агрегатах (категория, магазин, регион) и в интервале P10-P90, а не в точечном прогнозе одного SKU.</p>
+      <p>Верхние уровни 0.2-0.7 - заметно лучше бейзлайна. Нижний уровень (товар в магазине) около 1: спрос по одному товару прерывистый, точнее бейзлайна почти не предскажешь. Поэтому ценность в агрегатах и в интервале P10-P90, а не в точечном прогнозе одного SKU.</p>
     </div>
   </details>
 
@@ -211,7 +204,7 @@ function widthClass(width, median) {
   return "wide";
 }
 
-// подсветка WRMSSE уровня: зелёный хорошо, жёлтый средне, красный на уровне наива или хуже
+// подсветка WRMSSE уровня: зелёный хорошо, жёлтый средне, красный на уровне бейзлайна или хуже
 function wrClass(v) {
   v = +v;
   if (v < 0.65) return "narrow";
@@ -514,17 +507,26 @@ async function loadMetrics() {
     ? `WRMSSE: ${fmtM(m.wrmsse12_mean)} ± ${fmtM(m.wrmsse12_std)} (12 уровней) · ${fmtM(m.wrmsse9_mean)} ± ${fmtM(m.wrmsse9_std)} (по 9 различимым)`
     : "WRMSSE: —";
   document.getElementById("wrmsse-note").textContent = m.n_folds
-    ? `walk-forward, окон: ${m.n_folds}. По 9 различимым уровням оценка не завышена дублями: на срезе одной категории FOODS уровни L4/L6/L8 дублируют L1/L2/L3.`
+    ? `walk-forward, окон: ${m.n_folds}. Показаны вложенные уровни: от общего итога до товара в магазине.`
     : "";
+  const NEST = [
+    ["L1_total", "Всего"],
+    ["L2_state", "Штат"],
+    ["L3_store", "Штат-магазин"],
+    ["L9_store_dept", "Штат-магазин-отдел"],
+    ["L12_item_store", "Штат-магазин-отдел-товар"],
+  ];
+  const byLevel = Object.fromEntries((m.rows || []).map(r => [r.level, r.value]));
   const tbody = document.querySelector("#metrics tbody");
   tbody.innerHTML = "";
-  for (const row of (m.rows || [])) {
+  for (const [key, name] of NEST) {
+    if (byLevel[key] == null) continue;
     const tr = document.createElement("tr");
     const a = document.createElement("td");
-    a.textContent = row.level;
+    a.textContent = name;
     const b = document.createElement("td");
-    b.textContent = fmtM(row.value);
-    b.className = wrClass(row.value);
+    b.textContent = fmtM(byLevel[key]);
+    b.className = wrClass(byLevel[key]);
     tr.appendChild(a);
     tr.appendChild(b);
     tbody.appendChild(tr);

@@ -8,7 +8,7 @@
     <select id="store_id" name="store_id">
       <option value="">Все магазины</option>
       {% for s in stores %}
-      <option value="{{ s }}" {% if loop.first %}selected{% endif %}>{{ s }}</option>
+      <option value="{{ s }}">{{ s }}</option>
       {% endfor %}
     </select>
   </div>
