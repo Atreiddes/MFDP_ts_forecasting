@@ -33,6 +33,12 @@ DRIFT_PSI = Gauge(
     "forecast_data_drift_psi", "PSI дрейфа признаков (последний завершённый прогон)", ["feature"])
 MODEL_INFO = Gauge("forecast_model_info", "Версия артефакта модели, значение 1", ["version"])
 
+# Прогноз против факта (по мере вызревания факта) и сводный флаг деградации
+ACCURACY_WMAPE = Gauge("forecast_accuracy_wmape", "WMAPE прогноза против факта")
+ACCURACY_BIAS = Gauge("forecast_accuracy_bias", "Смещение прогноза как доля объёма факта")
+INTERVAL_COVERAGE = Gauge("forecast_interval_coverage", "Доля факта в интервале P10-P90")
+DEGRADED = Gauge("forecast_degraded", "Модель деградировала по гейту (1) или нет (0)")
+
 _ACTIVE = {"new", "queued", "processing"}
 
 
@@ -62,6 +68,21 @@ def set_drift(features: list) -> None:
 def set_model_version(version: str) -> None:
     MODEL_INFO.clear()
     MODEL_INFO.labels(version=version).set(1)
+
+
+def set_accuracy(accuracy: dict | None) -> None:
+    if not accuracy:
+        return
+    if accuracy.get("wmape") is not None:
+        ACCURACY_WMAPE.set(accuracy["wmape"])
+    if accuracy.get("bias") is not None:
+        ACCURACY_BIAS.set(accuracy["bias"])
+    if accuracy.get("coverage") is not None:
+        INTERVAL_COVERAGE.set(accuracy["coverage"])
+
+
+def set_degraded(report: dict) -> None:
+    DEGRADED.set(0 if report["ok"] else 1)
 
 
 def serve(port: int = 9100) -> None:

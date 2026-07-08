@@ -24,7 +24,7 @@ from fastapi.templating import Jinja2Templates
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
-from . import crud, models, mq, prom
+from . import crud, models, monitoring, mq, prom
 from .config import settings
 from .db import create_db
 from .forecast import load_artifact
@@ -58,16 +58,28 @@ async def _refresh_metrics():
         await asyncio.sleep(15)
 
 
+def _monitoring_report():
+    """Отчёт гейта деградации по последнему завершённому прогону: точность прогноз-факт,
+    дрейф признаков и сводный флаг. Общий для фонового сбора метрик и эндпоинта."""
+    run_id = crud.last_run_id(models.COMPLETED)
+    if run_id is None:
+        return monitoring.gate(None, None)
+    accuracy = crud.accuracy_vs_actual(run_id)
+    res = _drift_cached(run_id)
+    drift = res["features"] if res else None
+    return monitoring.gate(accuracy, drift)
+
+
 def _collect_metrics():
     prom.set_runs_status(crud.run_status_counts())
     summ = settings.metrics_dir / "metrics_summary.json"
     if summ.exists():
         prom.set_quality(json.loads(summ.read_text(encoding="utf-8")))
-    run_id = crud.last_run_id(models.COMPLETED)
-    if run_id is not None:
-        res = _drift_cached(run_id)
-        if res:
-            prom.set_drift(res["features"])
+    report = _monitoring_report()
+    if report["drift"]:
+        prom.set_drift(report["drift"])
+    prom.set_accuracy(report["accuracy"])
+    prom.set_degraded(report)
 
 
 @asynccontextmanager
@@ -259,6 +271,13 @@ def drift(run_id: int):
     if res is None:
         raise HTTPException(404, "нет данных для оценки дрейфа")
     return res
+
+
+@app.get("/api/monitoring")
+def monitoring_report():
+    """Гейт деградации: точность прогноз-факт, дрейф и сводный флаг ok с предупреждениями.
+    Этот же отчёт опрашивает DAG monitor_and_retrain для запуска переобучения."""
+    return _monitoring_report()
 
 
 @app.get("/api/runs/{run_id}/export.csv")
