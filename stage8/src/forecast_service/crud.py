@@ -225,6 +225,23 @@ def last_run_id(status):
                       .order_by(models.ForecastRun.id.desc()).limit(1)).first()
 
 
+def last_matured_run_id():
+    """id последнего завершённого прогона, у которого хотя бы часть недель уже имеет факт.
+    Прогноз в будущее факта ещё не имеет, поэтому точность и разрезы считаем по нему, а не по
+    просто последнему завершённому. None, если факта нет ни по одному прогону."""
+    sql = text("""
+        SELECT p.run_id
+        FROM forecast_point p
+        JOIN sales_history h ON h.series_id = p.series_id
+             AND h.week_start_date = p.week_start_date AND h.n_days = 7
+        JOIN forecast_run r ON r.id = p.run_id AND r.status = 'completed'
+        GROUP BY p.run_id ORDER BY p.run_id DESC LIMIT 1
+    """)
+    with engine.connect() as conn:
+        row = conn.execute(sql).first()
+    return row[0] if row else None
+
+
 def accuracy_vs_actual(run_id):
     """Точность прогноза против пришедшего факта: WMAPE, смещение и покрытие интервала
     P10-P90 по тем неделям прогона, для которых уже есть полная неделя факта. None, если

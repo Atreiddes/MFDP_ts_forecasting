@@ -59,15 +59,14 @@ async def _refresh_metrics():
 
 
 def _monitoring_report():
-    """Отчёт гейта деградации по последнему завершённому прогону: точность прогноз-факт,
-    дрейф признаков и сводный флаг. Общий для фонового сбора метрик и эндпоинта."""
-    run_id = crud.last_run_id(models.COMPLETED)
-    if run_id is None:
-        return monitoring.gate(None, None)
-    accuracy = crud.accuracy_vs_actual(run_id)
-    res = _drift_cached(run_id)
+    """Отчёт гейта деградации: точность прогноз-факт и разрезы по последнему прогону с
+    вызревшим фактом, дрейф по последнему завершённому. Общий для сбора метрик и эндпоинта."""
+    matured = crud.last_matured_run_id()
+    accuracy = crud.accuracy_vs_actual(matured) if matured else None
+    breakdowns = crud.accuracy_breakdowns(matured) if matured else None
+    completed = crud.last_run_id(models.COMPLETED)
+    res = _drift_cached(completed) if completed else None
     drift = res["features"] if res else None
-    breakdowns = crud.accuracy_breakdowns(run_id)
     return monitoring.gate(accuracy, drift, breakdowns)
 
 
