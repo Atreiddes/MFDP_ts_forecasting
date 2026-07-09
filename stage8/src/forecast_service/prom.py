@@ -1,12 +1,15 @@
 """Метрики Prometheus: определения и наполнение из БД и файлов метрик.
 
-Эндпоинт /metrics отдаёт api, воркер поднимает свой сервер метрик (serve). Prometheus
-скрейпит оба, Grafana строит панели. Набор общий: каждый процесс регистрирует все метрики,
-но наполняет только свою часть (лишние остаются нулевыми).
+Метрики api в дефолтном регистре (эндпоинт /metrics), метрики воркера в отдельном
+WORKER_REGISTRY (его отдаёт serve на порту 9100). Разделение регистров нужно, чтобы api
+не отдавал пустые метрики воркера и наоборот. Prometheus скрейпит оба, Grafana строит панели.
 """
 from __future__ import annotations
 
-from prometheus_client import Counter, Gauge, Histogram, start_http_server
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, start_http_server
+
+# Метрики воркера в своём регистре: у api их не будет, у воркера не будет метрик api
+WORKER_REGISTRY = CollectorRegistry()
 
 # HTTP api: наполняет middleware в api.py. path - шаблон маршрута, а не сырой путь,
 # иначе run_id в адресе разносит кардинальность
@@ -16,14 +19,18 @@ HTTP_LATENCY = Histogram(
     "http_request_duration_seconds", "Время ответа api", ["method", "path"],
     buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10))
 
-# Прогоны: постановка (api) и обработка пачек (воркер)
+# Постановка прогона в api
 RUNS_CREATED = Counter("forecast_runs_created_total", "Поставлено прогонов", ["scope"])
+
+# Обработка пачек воркером - в регистре воркера
 CHUNKS_PROCESSED = Counter(
-    "forecast_chunks_processed_total", "Обработано пачек воркером", ["result"])
+    "forecast_chunks_processed_total", "Обработано пачек воркером", ["result"],
+    registry=WORKER_REGISTRY)
 CHUNK_DURATION = Histogram(
     "forecast_chunk_duration_seconds", "Время обработки пачки воркером",
-    buckets=(0.5, 1, 2, 5, 10, 30, 60, 120, 300))
-SERIES_FORECAST = Counter("forecast_series_total", "Рядов спрогнозировано")
+    buckets=(0.5, 1, 2, 5, 10, 30, 60, 120, 300), registry=WORKER_REGISTRY)
+SERIES_FORECAST = Counter(
+    "forecast_series_total", "Рядов спрогнозировано", registry=WORKER_REGISTRY)
 
 # Состояние и качество: наполняет фоновый сбор в api
 RUNS_STATUS = Gauge("forecast_runs_status", "Прогонов в каждом статусе", ["status"])
@@ -118,4 +125,4 @@ def set_breakdowns(bd: dict | None) -> None:
 
 def serve(port: int = 9100) -> None:
     """Сервер метрик воркера в фоновом потоке: воркер блокируется на очереди, метрики отдаёт рядом."""
-    start_http_server(port)
+    start_http_server(port, registry=WORKER_REGISTRY)
