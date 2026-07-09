@@ -91,6 +91,9 @@ service = dash("Сервис прогноза", "forecast-service", [
     stat(25, "Новые ряды", [('forecast_series_new{job="forecast-api"}', None)], gp(10, 66, 4, 4)),
     stat(26, "Выбывшие ряды", [('forecast_series_dead{job="forecast-api"}', None)], gp(14, 66, 4, 4)),
     stat(27, "Стабильность прогноза (CoV P50)", [('forecast_revision_volatility{job="forecast-api"}', None)], gp(18, 66, 6, 4), "percentunit"),
+    stat(28, "Полнота прогона", [('forecast_run_coverage{job="forecast-api"}', None)], gp(0, 70, 6, 4), "percentunit"),
+    stat(29, "Возраст артефакта, дней", [('forecast_artifact_age_days{job="forecast-api"}', None)], gp(6, 70, 6, 4)),
+    ts(30, "Фоллбек на базу MA-4, рядов/с", [("sum(rate(forecast_fallback_series_total[5m]))", "фоллбек")], gp(12, 70, 12, 8)),
 ])
 
 # Очередь RabbitMQ

@@ -17,6 +17,8 @@ PLANNING_BIAS_GATE = 0.15  # плановое смещение выше набл
 FVA_FLOOR = -8.0           # проигрыш MA-4 глубже шума одного магазина (min -5.9%) - реальный провал
 COMPLETENESS_FLOOR = 0.9   # полнота последней недели факта ниже - данные загрузились не полностью
 REVISION_GATE = 0.3        # разброс P50 по origin выше наблюдаемого (0.06) - прогноз дёргается
+RUN_COVERAGE_FLOOR = 0.99  # спрогнозировано меньше доли запрошенных рядов - часть выпала
+ARTIFACT_AGE_GATE = 14     # артефакт модели старше стольких дней - пора переобучать
 
 
 def gate(accuracy: dict | None, drift: list | None, breakdowns: dict | None = None,
@@ -60,5 +62,11 @@ def gate(accuracy: dict | None, drift: list | None, breakdowns: dict | None = No
         rev = health.get("revision_volatility")
         if rev is not None and rev > REVISION_GATE:
             warnings.append(f"разброс прогноза по origin {rev:.2f} выше порога {REVISION_GATE}")
+        coverage = health.get("run_coverage")
+        if coverage is not None and coverage < RUN_COVERAGE_FLOOR:
+            warnings.append(f"полнота прогона {coverage:.2f} ниже порога {RUN_COVERAGE_FLOOR}")
+        age = health.get("artifact_age_days")
+        if age is not None and age > ARTIFACT_AGE_GATE:
+            warnings.append(f"артефакт старше {ARTIFACT_AGE_GATE} дней (возраст {age})")
     return {"ok": not warnings, "warnings": warnings, "accuracy": accuracy,
             "drift": drift, "breakdowns": breakdowns, "health": health}

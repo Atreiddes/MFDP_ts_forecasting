@@ -30,6 +30,7 @@ def handle(body):
         prom.CHUNK_DURATION.observe(time.perf_counter() - start)
         prom.CHUNKS_PROCESSED.labels(result="completed").inc()
         prom.SERIES_FORECAST.inc(out["series_id"].nunique())
+        prom.FALLBACK.inc(out.attrs.get("n_fallback", 0))
         print(f"chunk {msg['chunk_id']} готов: {out['series_id'].nunique()} рядов", flush=True)
     except Exception as e:
         prom.CHUNKS_PROCESSED.labels(result="failed").inc()

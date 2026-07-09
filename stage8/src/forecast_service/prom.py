@@ -65,6 +65,14 @@ SERIES_NEW = Gauge("forecast_series_new", "Новых рядов за после
 SERIES_DEAD = Gauge("forecast_series_dead", "Выбывших рядов за последнее окно")
 REVISION_VOL = Gauge("forecast_revision_volatility", "Разброс P50 по origin (стабильность прогноза)")
 
+# Полнота прогона и возраст артефакта
+RUN_COVERAGE = Gauge("forecast_run_coverage", "Полнота прогона: спрогнозировано / запрошено")
+ARTIFACT_AGE = Gauge("forecast_artifact_age_days", "Возраст артефакта модели, дней")
+
+# Фоллбек на базу MA-4 при мусоре модели (считает воркер)
+FALLBACK = Counter(
+    "forecast_fallback_series_total", "Рядов с фоллбеком на базу MA-4", registry=WORKER_REGISTRY)
+
 _ACTIVE = {"new", "queued", "processing"}
 
 
@@ -134,6 +142,11 @@ def set_breakdowns(bd: dict | None) -> None:
     fva = bd.get("fva_ma4")
     FVA_MA4.set(fva["improvement_pct"] if fva and fva.get("improvement_pct") is not None else float("nan"))
     PLANNING_BIAS.set(bd["planning_bias"] if bd.get("planning_bias") is not None else float("nan"))
+
+
+def set_run_health(coverage, artifact_age_days) -> None:
+    RUN_COVERAGE.set(coverage if coverage is not None else float("nan"))
+    ARTIFACT_AGE.set(artifact_age_days if artifact_age_days is not None else float("nan"))
 
 
 def set_health(freshness: dict | None, churn: dict | None, revision) -> None:

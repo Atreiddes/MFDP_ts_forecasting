@@ -86,6 +86,22 @@ def test_gate_revision_high():
 
 def test_gate_health_ok():
     health = {"freshness": {"completeness": 0.98}, "churn": {"new_series": 1, "dead_series": 0},
-              "revision_volatility": 0.05}
+              "revision_volatility": 0.05, "run_coverage": 1.0, "artifact_age_days": 1.0}
     rep = m.gate(None, None, None, health)
     assert rep["ok"]
+
+
+def test_gate_run_coverage_low():
+    health = {"run_coverage": 0.8, "freshness": None, "churn": None,
+              "revision_volatility": None, "artifact_age_days": None}
+    rep = m.gate(None, None, None, health)
+    assert not rep["ok"]
+    assert any("полнота прогона" in w for w in rep["warnings"])
+
+
+def test_gate_artifact_stale():
+    health = {"artifact_age_days": 30, "freshness": None, "churn": None,
+              "revision_volatility": None, "run_coverage": None}
+    rep = m.gate(None, None, None, health)
+    assert not rep["ok"]
+    assert any("артефакт" in w for w in rep["warnings"])

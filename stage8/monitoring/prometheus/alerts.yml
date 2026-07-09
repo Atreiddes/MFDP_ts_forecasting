@@ -72,3 +72,30 @@ groups:
         annotations:
           summary: "Прогноз нестабилен между прогонами"
           description: "Разброс P50 на одну неделю ряда между origin выше 0.3 - прогноз сильно дёргается от прогона к прогону."
+
+      - alert: ModelFallback
+        expr: sum(rate(forecast_fallback_series_total{job="forecast-worker"}[10m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Модель выдаёт мусор, включился фоллбек"
+          description: "Есть ряды с подменой прогноза на базу MA-4 (NaN или скачок модели) за последние 10 минут."
+
+      - alert: RunIncomplete
+        expr: forecast_run_coverage{job="forecast-api"} < 0.99
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Прогон неполный"
+          description: "Спрогнозировано меньше 0.99 запрошенных рядов - часть рядов выпала (провал пачки или пустая история)."
+
+      - alert: ArtifactStale
+        expr: forecast_artifact_age_days{job="forecast-api"} > 14
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Артефакт модели устарел"
+          description: "Возраст артефакта модели больше 14 дней - пора переобучать."

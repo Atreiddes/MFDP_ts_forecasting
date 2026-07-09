@@ -68,8 +68,16 @@ def _monitoring_report():
     res = _drift_cached(completed) if completed else None
     drift = res["features"] if res else None
     health = {"freshness": crud.data_freshness(), "churn": crud.assortment_churn(),
-              "revision_volatility": crud.revision_volatility()}
+              "revision_volatility": crud.revision_volatility(),
+              "run_coverage": crud.run_coverage(completed) if completed else None,
+              "artifact_age_days": _artifact_age_days()}
     return monitoring.gate(accuracy, drift, breakdowns, health)
+
+
+def _artifact_age_days():
+    """Возраст артефакта модели в днях по времени изменения файла модели. None, если нет."""
+    f = settings.artifact_dir / "model.txt"
+    return round((time.time() - f.stat().st_mtime) / 86400, 2) if f.exists() else None
 
 
 # последний отчёт гейта из фонового сбора: эндпоинт отдаёт его, а не пересчитывает тяжёлые SQL
@@ -90,6 +98,7 @@ def _collect_metrics():
     prom.set_breakdowns(report["breakdowns"])
     health = report["health"]
     prom.set_health(health["freshness"], health["churn"], health["revision_volatility"])
+    prom.set_run_health(health["run_coverage"], health["artifact_age_days"])
     prom.set_degraded(report)
 
 

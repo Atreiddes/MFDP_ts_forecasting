@@ -21,6 +21,7 @@ from .ml.schemas import features_schema, forecast_output_schema, validate_sample
 QUANTILES = (0.1, 0.9)
 HIST_WEEKS = 78  # хватает на lag_52 + rolling_26
 OUT_COLS = ["series_id", TCOL, "h", "p10", "p50", "p90"]  # контракт выхода, один на все пути
+BLOWUP_K = 10  # P50 выше BLOWUP_K исторических максимумов ряда = скачок, считаем мусором
 
 _ART: dict = {}
 _CAL: dict = {}
@@ -123,9 +124,33 @@ def forecast_series(history: pd.DataFrame, origin, horizon=HMAX,
     q10 = np.where(oos, 0.0, np.clip(art["q"][0.1].predict(te[FEATURES]), 0, None))
     q90 = np.where(oos, 0.0, np.clip(art["q"][0.9].predict(te[FEATURES]), 0, None))
 
+    sid = te["id"].to_numpy()
+    p50, q10, q90, n_fallback = _apply_fallback(sid, hist, p50, q10, q90)
+
     out = te[["id", TCOL, "h"]].rename(columns={"id": "series_id"}).copy()
     out["p10"] = np.minimum(q10, p50).astype("float32")
     out["p50"] = p50.astype("float32")
     out["p90"] = np.maximum(q90, p50).astype("float32")
+    out.attrs["n_fallback"] = n_fallback  # рядов, подменённых базой; воркер шлёт в метрику
     validate_sample(out, forecast_output_schema)  # контроль выхода: без NaN, >= 0, монотонность
     return out
+
+
+def _apply_fallback(series_ids, hist, p50, q10, q90):
+    """Мусор модели (NaN или скачок выше BLOWUP_K исторических максимумов ряда) заменяем плоским
+    прогнозом MA-4 по ряду целиком, чтобы планировщик не заказывал по пустышке. Возвращает
+    исправленные квантили и число подменённых рядов. Скачок мерим по максимуму, а не среднему,
+    чтобы не душить легитимные промо-всплески на редких рядах."""
+    h = hist.sort_values(TCOL)
+    ma4 = h.groupby("id").tail(4).groupby("id")["units"].mean()   # значение для подмены
+    hmax = h.groupby("id").tail(13).groupby("id")["units"].max()  # масштаб для детекции скачка
+    base = pd.Series(series_ids).map(ma4).fillna(0.0).to_numpy(dtype=float)
+    scale = pd.Series(series_ids).map(hmax).fillna(0.0).to_numpy(dtype=float)
+    bad_row = ~np.isfinite(p50) | (p50 > BLOWUP_K * np.maximum(scale, 1.0))
+    bad = np.isin(series_ids, np.unique(series_ids[bad_row]))
+    if not bad.any():
+        return p50, q10, q90, 0
+    p50 = np.where(bad, base, p50)
+    q10 = np.where(bad, base * 0.5, q10)
+    q90 = np.where(bad, base * 1.5, q90)
+    return p50, q10, q90, int(np.unique(series_ids[bad_row]).size)

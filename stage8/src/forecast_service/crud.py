@@ -399,6 +399,20 @@ def assortment_churn(window_weeks=13):
             "dead_series": len(prior - recent), "recent_active": len(recent)}
 
 
+def run_coverage(run_id):
+    """Полнота прогона: доля запрошенных рядов, для которых есть прогноз. Ниже 1 - часть рядов
+    выпала (провал пачки, пустая история). None, если прогон не найден или пуст."""
+    with Session(engine) as s:
+        run = s.get(models.ForecastRun, run_id)
+        if run is None or not run.n_series:
+            return None
+    with engine.connect() as conn:
+        got = conn.execute(text(
+            "SELECT count(DISTINCT series_id) FROM forecast_point WHERE run_id = :rid"),
+            {"rid": run_id}).scalar()
+    return round(got / run.n_series, 4)
+
+
 def revision_volatility(max_runs=12):
     """Стабильность прогноза: насколько расходится точечный P50 на одну и ту же неделю ряда
     между прогонами с разным origin. Среднее по (ряд, неделя) с >=2 origin: разброс P50 к
