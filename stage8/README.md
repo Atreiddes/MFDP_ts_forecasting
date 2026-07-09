@@ -18,6 +18,7 @@ docker compose up -d --build
 - дашборды Grafana - http://localhost/grafana (анонимный просмотр или admin/admin)
 - Prometheus - http://localhost:9090
 - Alertmanager - http://localhost:9093
+- инбокс алертов (MailHog) - http://localhost:8025
 
 Если порты заняты, их можно сдвинуть переменными: `WEB_PORT=8080 RMQ_MGMT_PORT=15680 DB_PORT=5442 GRAFANA_PORT=3300 PROM_PORT=9190 docker compose up -d --build`.
 

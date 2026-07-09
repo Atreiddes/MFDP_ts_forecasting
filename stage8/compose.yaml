@@ -119,7 +119,7 @@ services:
       - api
     restart: unless-stopped
 
-  # Alertmanager: принимает алерты от Prometheus и доставляет их (вебхук в api)
+  # Alertmanager: принимает алерты от Prometheus и доставляет их (email в MailHog + вебхук в api)
   alertmanager:
     image: prom/alertmanager:v0.27.0
     volumes:
@@ -128,6 +128,14 @@ services:
       - "${ALERTMANAGER_PORT:-9093}:9093"
     depends_on:
       - api
+      - mailhog
+    restart: unless-stopped
+
+  # MailHog: SMTP-приёмник и веб-инбокс для показа доставки алертов почтой
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      - "${MAILHOG_PORT:-8025}:8025"
     restart: unless-stopped
 
   grafana:

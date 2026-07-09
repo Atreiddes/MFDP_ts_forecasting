@@ -40,6 +40,7 @@ docker compose up -d --build
 - Grafana (дашборды) - http://localhost/grafana (анонимный просмотр или admin/admin)
 - Prometheus - http://localhost:9090
 - Alertmanager - http://localhost:9093
+- инбокс алертов (MailHog) - http://localhost:8025
 - панель RabbitMQ - http://localhost:15672 (app / app)
 
 Оркестратор переобучения поднимается отдельным профилем:

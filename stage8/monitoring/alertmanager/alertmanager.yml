@@ -1,13 +1,19 @@
 route:
-  receiver: service-webhook
+  receiver: ops
   group_by: ["alertname"]
   group_wait: 10s
   group_interval: 30s
   repeat_interval: 1h
 
 receivers:
-  - name: service-webhook
+  - name: ops
+    # email в MailHog (демо-инбокс) и вебхук в сервис; в рабочей системе - реальный SMTP или мессенджер
+    email_configs:
+      - to: planner-oncall@example.com
+        from: alertmanager@forecast.local
+        smarthost: mailhog:1025
+        require_tls: false
+        send_resolved: true
     webhook_configs:
-      # доставка уведомлений в сервис; в рабочей системе тут почта или мессенджер
       - url: http://api:8000/api/alerts
         send_resolved: true
