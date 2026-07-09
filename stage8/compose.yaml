@@ -104,6 +104,7 @@ services:
         condition: service_healthy
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
 
   # Мониторинг: Prometheus собирает метрики api, воркеров, брокера и БД, Grafana их рисует
   prometheus:
