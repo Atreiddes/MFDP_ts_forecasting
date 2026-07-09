@@ -99,3 +99,32 @@ groups:
         annotations:
           summary: "Артефакт модели устарел"
           description: "Возраст артефакта модели больше 14 дней - пора переобучать."
+
+  - name: infra
+    rules:
+      - alert: QueueBacklogStuck
+        expr: rabbitmq_queue_messages_ready > 500
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Очередь копится и не разбирается"
+          description: "В очереди больше 500 сообщений дольше 15 минут - воркеры не справляются или встали."
+
+      - alert: NoQueueConsumers
+        expr: rabbitmq_consumers == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Нет потребителей очереди"
+          description: "Потребителей очереди ноль дольше 5 минут - все воркеры умерли, прогоны не считаются."
+
+      - alert: PostgresConnectionsHigh
+        expr: sum(pg_stat_database_numbackends) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Соединений с Postgres много"
+          description: "Больше 80 соединений с Postgres дольше 10 минут - близко к пределу пула."
