@@ -1,30 +1,55 @@
-# MFDP: weekly demand forecast (M5)
+# Прогноз недельного спроса (retail / FMCG, M5)
 
-Учебный проект MFDP 2026. Прогноз недельного спроса на открытых данных M5 Walmart как прокси
-FMCG (PepsiCo). Из четырёх задач первоначального анализа в прототип и baseline вынесена одна,
-прогноз спроса; остальные три в roadmap.
+Сервис прогнозирования недельного спроса в рознице. Планировщик выбирает срез ассортимента,
+сервис считает прогноз по всем рядам товар x магазин на 8 недель вперёд с интервалами
+неопределённости; качество модели отслеживается, и при деградации запускается переобучение.
+Данные - открытый датасет M5 (Walmart) как прокси FMCG.
 
-## Карта работ
+## Что делает
 
-| Этап | Что | Где |
-|---|---|---|
-| stage1 | Бизнес-анализ: 4 задачи на M5 (прогноз, эластичность, promo uplift, оптимизация цен) | [stage1/business_analysis.md](stage1/business_analysis.md) |
-| stage2 | Прототип weekly demand forecast для demand planner-а, сужение scope, SaaS-дизайн | [stage2/prototype.md](stage2/prototype.md) |
-| stage3 | Презентация и расчёты (Google Slides / Sheets) | [stage3/](stage3/) |
-| stage4 | Датасет M5 + EDA для weekly demand forecast | [stage4/](stage4/) |
-| stage5-6 | Baseline-решение: модели, метрики, сервис | [stage5/](stage5/) |
+- Недельный прогноз спроса товар x магазин с интервалами P10-P90.
+- Асинхронно: запрос дробится на пачки рядов, воркеры считают параллельно и масштабируются горизонтально.
+- Модель - LightGBM (точечная Tweedie + квантильные P10/P90 + калибровка), обучена офлайн, качество измерено walk-forward по WRMSSE.
+- Мониторинг деградации: точность прогноз-факт, смещение, калибровка интервалов, дрейф входа (PSI и KS), разрезы по горизонту, штату, промо и сегментам, forecast value add против базы MA-4, свежесть данных, дрейф ассортимента, стабильность прогноза.
+- Алерты Prometheus с доставкой через Alertmanager; переобучение по расписанию и по деградации (Airflow).
 
-## Главный результат (stage5-6)
+## Стек
 
-Недельный прогноз спроса item × store на 4 недели, 30490 рядов. Лучшая модель LightGBM ансамбль,
-WRMSSE 0.748 (8 фолдов walk-forward), обходит простой MA-4 (0.802) на 6.8%. Лестница моделей от
-наива до бустинга в [stage5/metriclog.md](stage5/metriclog.md), разбор метрик в
-[stage5/evaluation.md](stage5/evaluation.md). Точка входа в решение: [stage5/README.md](stage5/README.md).
+- Сервис: FastAPI, Uvicorn, Jinja2
+- Данные и очередь: PostgreSQL, RabbitMQ
+- Модель: LightGBM, pandas, NumPy, pandera (контракт данных)
+- Мониторинг: Prometheus, Alertmanager, Grafana, postgres-exporter, плагин rabbitmq_prometheus
+- Оркестрация: Airflow
+- Инфраструктура: Docker Compose, nginx, uv
 
-## Сужение scope
+## Как поднять локально
 
-stage1 ставил четыре задачи на дневном горизонте. В stage2 для пилота с demand planner-ом оставлена
-одна, прогноз спроса (недельный горизонт, понятный планировщику KPI). Эластичность, promo uplift
-и оптимизация цен надстраиваются над прогнозом и вынесены в roadmap, для baseline они не нужны.
+Нужен только Docker. Из каталога stage8:
 
-Dmitrii Gertsovskii.
+```
+cd stage8
+docker compose up -d --build
+```
+
+Поднимется весь стек, база при первом запуске наполняется срезом M5 (категория FOODS, 14 370 рядов товар-магазин) автоматически.
+
+Адреса (порты по умолчанию, переопределяются в `stage8/.env`):
+
+- интерфейс планировщика - http://localhost
+- REST и Swagger - http://localhost/api/docs
+- Grafana (дашборды) - http://localhost/grafana (анонимный просмотр или admin/admin)
+- Prometheus - http://localhost:9090
+- Alertmanager - http://localhost:9093
+- панель RabbitMQ - http://localhost:15672 (app / app)
+
+Оркестратор переобучения поднимается отдельным профилем:
+
+```
+docker compose --profile ops up -d airflow
+```
+
+## Структура репозитория
+
+- `stage8/` - сервис: API, воркеры, мониторинг, оркестрация. Основной результат, подробности в [stage8/README.md](stage8/README.md).
+- `stage5/` - обучающий пайплайн модели и метрики (walk-forward, WRMSSE).
+- `stage1`-`stage4` - бизнес-анализ, прототип, датасет и EDA.

@@ -15,7 +15,7 @@ docker compose up -d --build
 - интерфейс планера - http://localhost
 - REST и Swagger - http://localhost/api/docs
 - панель RabbitMQ - http://localhost:15672 (app / app)
-- дашборды Grafana - http://localhost:3000 (просмотр открыт без логина)
+- дашборды Grafana - http://localhost/grafana (анонимный просмотр или admin/admin)
 - Prometheus - http://localhost:9090
 - Alertmanager - http://localhost:9093
 
