@@ -36,7 +36,7 @@ HERE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 
 
-async def _reap_stale():
+async def _reap_stale() -> None:
     """Фоновая задача: пачки, зависшие в processing после жёсткой смерти воркера,
     по таймауту помечаются failed, прогоны финализируются."""
     while True:
@@ -49,7 +49,7 @@ async def _reap_stale():
             _log.exception("проверка зависших пачек")
 
 
-async def _refresh_metrics():
+async def _refresh_metrics() -> None:
     """Фоновый сбор гейджей: статусы прогонов, качество модели, дрейф последнего
     завершённого прогона. Быстрые метрики (запросы, пачки) считаются в месте события."""
     while True:
@@ -60,7 +60,7 @@ async def _refresh_metrics():
         await asyncio.sleep(15)
 
 
-def _monitoring_report():
+def _monitoring_report() -> dict:
     """Отчёт гейта деградации: точность прогноз-факт и разрезы по последнему прогону с
     вызревшим фактом, дрейф по последнему завершённому. Общий для сбора метрик и эндпоинта."""
     matured = crud.last_matured_run_id()
@@ -76,7 +76,7 @@ def _monitoring_report():
     return monitoring.gate(accuracy, drift, breakdowns, health)
 
 
-def _artifact_age_days():
+def _artifact_age_days() -> float | None:
     """Возраст артефакта модели в днях по времени изменения файла модели. None, если нет."""
     f = settings.artifact_dir / "model.txt"
     return round((time.time() - f.stat().st_mtime) / 86400, 2) if f.exists() else None
@@ -86,7 +86,7 @@ def _artifact_age_days():
 _last_report: dict | None = None
 
 
-def _collect_metrics():
+def _collect_metrics() -> None:
     global _last_report
     prom.set_runs_status(crud.run_status_counts())
     summ = settings.metrics_dir / "metrics_summary.json"
@@ -126,7 +126,7 @@ app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
 
 @app.middleware("http")
-async def _prometheus_mw(request: Request, call_next):
+async def _prometheus_mw(request: Request, call_next) -> Response:
     start = time.perf_counter()
     response = await call_next(request)
     route = request.scope.get("route")
@@ -140,7 +140,7 @@ async def _prometheus_mw(request: Request, call_next):
 
 
 @app.get("/metrics", include_in_schema=False)
-def prometheus_metrics():
+def prometheus_metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
@@ -152,13 +152,13 @@ class RunRequest(BaseModel):
 
 
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request):
+def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "index.html",
                                       {"stores": crud.stores(), "runs": crud.recent_runs(100)})
 
 
 @app.get("/runs/{run_id}", response_class=HTMLResponse)
-def run_page(request: Request, run_id: int):
+def run_page(request: Request, run_id: int) -> HTMLResponse:
     return templates.TemplateResponse(request, "run.html", {"run_id": run_id})
 
 
@@ -175,7 +175,7 @@ def health():
 
 
 @app.post("/api/runs", status_code=202)
-def create_run(req: RunRequest, x_api_key: str | None = Header(None, alias="X-API-Key")):
+def create_run(req: RunRequest, x_api_key: str | None = Header(None, alias="X-API-Key")) -> dict:
     if x_api_key != settings.api_key:
         raise HTTPException(401, "нет доступа: неверный ключ API")
     art = load_artifact()
@@ -196,12 +196,12 @@ def create_run(req: RunRequest, x_api_key: str | None = Header(None, alias="X-AP
 
 
 @app.get("/api/runs")
-def list_runs():
+def list_runs() -> list:
     return crud.recent_runs(50)
 
 
 @app.get("/api/runs/{run_id}")
-def run_status(run_id: int):
+def run_status(run_id: int) -> dict:
     res = crud.run_progress(run_id)
     if res is None:
         raise HTTPException(404, "прогон не найден")
@@ -211,11 +211,11 @@ def run_status(run_id: int):
 
 
 @app.get("/api/runs/{run_id}/catalog")
-def catalog(run_id: int):
+def catalog(run_id: int) -> list:
     return crud.catalog(run_id).to_dict("records")
 
 
-def _chart_payload(pts, hist):
+def _chart_payload(pts, hist) -> dict:
     """Единый формат ответа для графика: колонка week как строка, значения округлены."""
     def fmt(d):
         d = d.copy()
@@ -225,7 +225,7 @@ def _chart_payload(pts, hist):
 
 
 @app.get("/api/runs/{run_id}/forecast")
-def forecast(run_id: int, series_id: str = Query(...)):
+def forecast(run_id: int, series_id: str = Query(...)) -> dict:
     pts, hist = crud.series_forecast(run_id, series_id)
     if pts.empty:
         raise HTTPException(404, "нет прогноза по ряду")
@@ -234,7 +234,7 @@ def forecast(run_id: int, series_id: str = Query(...)):
 
 @app.get("/api/runs/{run_id}/forecast_agg")
 def forecast_agg(run_id: int, state: str | None = None,
-                 store: str | None = None, dept: str | None = None):
+                 store: str | None = None, dept: str | None = None) -> dict:
     pts, hist = crud.agg_forecast(run_id, state, store, dept)
     if pts.empty:
         raise HTTPException(404, "нет прогноза по срезу")
@@ -242,7 +242,7 @@ def forecast_agg(run_id: int, state: str | None = None,
 
 
 @app.get("/api/runs/{run_id}/metrics")
-def metrics(run_id: int):
+def metrics(run_id: int) -> dict:
     art = load_artifact()
     mdir = settings.metrics_dir
     rows = pd.read_csv(mdir / "cv_summary_foods.csv").to_dict("records") \
@@ -252,7 +252,7 @@ def metrics(run_id: int):
     return {"model_version": art["model_version"], "rows": rows, **extra}
 
 
-def _psi(ref_prop, cur_prop):
+def _psi(ref_prop, cur_prop) -> float:
     """Population Stability Index: насколько текущее распределение отклонилось от эталона."""
     eps = 1e-6
     r = np.asarray(ref_prop, dtype=float) + eps
@@ -260,7 +260,7 @@ def _psi(ref_prop, cur_prop):
     return float(np.sum((c - r) * np.log(c / r)))
 
 
-def _ks(ref, cur):
+def _ks(ref, cur) -> float:
     """Двухвыборочная статистика Колмогорова-Смирнова: макс. расстояние между ЭФР выборок."""
     ref, cur = np.sort(ref), np.sort(cur)
     grid = np.concatenate([ref, cur])
@@ -270,7 +270,7 @@ def _ks(ref, cur):
 
 
 @lru_cache(maxsize=256)
-def _drift_cached(run_id: int):
+def _drift_cached(run_id: int) -> dict | None:
     """PSI признаков: текущее окно против того же окна год назад по тем же рядам.
     Сравнение год-к-году снимает сезонность. Для завершённого прогона результат
     неизменен, поэтому кэшируется."""
@@ -298,7 +298,7 @@ def _drift_cached(run_id: int):
 
 
 @app.get("/api/runs/{run_id}/drift")
-def drift(run_id: int):
+def drift(run_id: int) -> dict:
     res = _drift_cached(run_id)
     if res is None:
         raise HTTPException(404, "нет данных для оценки дрейфа")
@@ -306,7 +306,7 @@ def drift(run_id: int):
 
 
 @app.get("/api/monitoring")
-def monitoring_report():
+def monitoring_report() -> dict:
     """Гейт деградации: точность прогноз-факт, дрейф и сводный флаг ok с предупреждениями.
     Отдаёт последний отчёт фонового сбора (быстро); считает на месте, только пока его нет.
     Этот же отчёт опрашивает DAG monitor_and_retrain для запуска переобучения."""
@@ -314,7 +314,7 @@ def monitoring_report():
 
 
 @app.post("/api/alerts")
-async def receive_alerts(request: Request):
+async def receive_alerts(request: Request) -> dict:
     """Приёмник вебхука Alertmanager: логирует сработавшие алерты. Точка доставки уведомлений;
     в рабочей системе отсюда рассылают в почту или мессенджер."""
     payload = await request.json()
@@ -327,7 +327,7 @@ async def receive_alerts(request: Request):
 
 
 @app.get("/api/runs/{run_id}/export.csv")
-def export(run_id: int):
+def export(run_id: int) -> Response:
     buf = io.StringIO()
     crud.export_rows(run_id).to_csv(buf, index=False)
     return Response(buf.getvalue(), media_type="text/csv",
